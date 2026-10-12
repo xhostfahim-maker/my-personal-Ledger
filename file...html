@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Business Hisab Khata</title>
+<style>
+:root{--bg:#0b1020;--card:rgba(255,255,255,.065);--line:rgba(255,255,255,.13);--text:#eef2ff;--muted:#a5b0d0;--blue:#6485ff;--purple:#a45cff;--green:#3ddc97;--red:#ff7188;--orange:#ffbd59}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 5% 0,#20285b,transparent 35%),radial-gradient(circle at 95% 15%,#3c205c,transparent 35%),var(--bg);color:var(--text);font:15px/1.5 system-ui,"Noto Sans Bengali",sans-serif;min-height:100vh}
+#app{max-width:1100px;margin:auto;padding:16px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.brand{font-size:22px;font-weight:800;background:linear-gradient(120deg,#83a2ff,#d19aff);color:transparent;background-clip:text}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin:12px 0;backdrop-filter:blur(12px);box-shadow:0 8px 26px #0002}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:12px 0}.stat small{display:block;color:var(--muted)}.stat strong{display:block;font-size:23px;margin-top:4px;overflow-wrap:anywhere}
+.tabs,.actions,.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tabs{margin:14px 0;overflow-x:auto}.tabs button.active,button.primary{background:linear-gradient(120deg,var(--blue),var(--purple));border-color:transparent;color:white}
+button,input,select,textarea{font:inherit;color:var(--text);background:#ffffff0d;border:1px solid var(--line);border-radius:10px;padding:9px 11px}button{cursor:pointer}button:hover{filter:brightness(1.12)}input,select,textarea{max-width:100%}input::placeholder,textarea::placeholder{color:#9ca8c7}select option{background:#171d35}
+label{display:block;color:var(--muted);margin:10px 0}label input,label select,label textarea{display:block;width:100%;margin-top:5px}.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 12px}
+h2,h3{margin:0 0 10px}h2{font-size:19px}h3{font-size:16px}.muted,small{color:var(--muted)}.green{color:var(--green)}.red{color:var(--red)}.orange{color:var(--orange)}
+.item{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}.grow{flex:1;min-width:0}.grow b{display:block;overflow-wrap:anywhere}.amount{font-weight:750;white-space:nowrap}.pill{display:inline-block;font-size:11px;padding:3px 8px;border-radius:20px;background:#ffffff12;margin-right:5px}.empty{padding:20px;text-align:center;color:var(--muted)}.bar{height:9px;background:#ffffff12;border-radius:20px;overflow:hidden}.bar span{display:block;height:100%;background:linear-gradient(120deg,var(--blue),var(--purple))}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#242c4b;border:1px solid var(--line);padding:10px 16px;border-radius:12px;display:none;z-index:10;max-width:90vw}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:14px;z-index:5}.modal[hidden]{display:none}.modalbox{width:min(600px,100%);max-height:90vh;overflow:auto;background:#151b32;border:1px solid var(--line);border-radius:16px;padding:18px}
+@media(max-width:560px){#app{padding:10px}.item{align-items:flex-start}.amount{font-size:14px}.item button{padding:6px 8px}.brand{font-size:19px}}
+@media print{body{background:white;color:black}.tabs,.no-print,button{display:none!important}.card{background:white;color:black;box-shadow:none;border-color:#ccc}.muted,small{color:#444}}
+</style>
+</head>
+<body><main id="app"></main><div id="toast"></div><div class="modal" id="modal" hidden><div class="modalbox" id="modalbox"></div></div>
+<script>
+const STORE='business_hisab_khata_v1';
+const categories={
+ income:['পণ্য বিক্রি','সার্ভিস থেকে আয়','অন্যান্য ব্যবসার আয়'],
+ expense:['মাল/স্টক কেনা','দোকান/অফিস ভাড়া','কর্মচারীর বেতন','ডেলিভারি/পরিবহন','ইন্টারনেট/বিদ্যুৎ বিল','মার্কেটিং','প্যাকেজিং/সাপ্লাই','মেরামত','অন্যান্য ব্যবসার খরচ']
+};
+let state={transactions:[],businessName:'আমার ব্যবসা'};
+let view='dashboard',editing=null;
+const $=id=>document.getElementById(id);
+const money=n=>'৳'+Number(n||0).toLocaleString('en-BD',{maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today=()=>{let d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function save(){try{localStorage.setItem(STORE,JSON.stringify(state));return true}catch(e){toast('ডেটা সেভ করা যায়নি। ব্রাউজারের স্টোরেজ চেক করো।');return false}}
+function toast(s){$('toast').textContent=s;$('toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').style.display='none',2400)}
+function txTypeLabel(type){return type==='income'?'ব্যবসার আয়':'ব্যবসার খরচ'}
+function total(type,items=state.transactions){return items.filter(x=>x.type===type).reduce((a,x)=>a+Number(x.amount),0)}
+function currentMonth(x){return x.date.slice(0,7)===today().slice(0,7)}
+function openModal(html){$('modalbox').innerHTML=html;$('modal').hidden=false}
+function closeModal(){$('modal').hidden=true}
+$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal()});
+function nav(v){view=v;render()}
+function transactionForm(id=''){
+ editing=id;const old=id?state.transactions.find(x=>x.id===id):null;
+ const x=old||{type:'income',amount:'',date:today(),category:categories.income[0],person:'',note:''};
+ openModal(`<h2>${old?'হিসাব এডিট':'নতুন ব্যবসার হিসাব'}</h2>
+ <div class="formgrid">
+ <label>হিসাবের ধরন<select id="f_type" onchange="updateCategories()"><option value="income" ${x.type==='income'?'selected':''}>ব্যবসার আয়</option><option value="expense" ${x.type==='expense'?'selected':''}>ব্যবসার খরচ</option></select></label>
+ <label>টাকার পরিমাণ (৳)<input id="f_amount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${esc(x.amount)}" placeholder="যেমন 2500"></label>
+ <label>তারিখ<input id="f_date" type="date" value="${esc(x.date)}"></label>
+ <label>ক্যাটাগরি<select id="f_category"></select></label>
+ <label>কাস্টমার/সাপ্লায়ারের নাম (ঐচ্ছিক)<input id="f_person" value="${esc(x.person||'')}" placeholder="নাম লিখুন"></label>
+ <label>নোট (ঐচ্ছিক)<input id="f_note" value="${esc(x.note||'')}" placeholder="লেনদেনের বিবরণ"></label>
+ </div><div class="actions" style="margin-top:14px"><button class="primary" onclick="saveTransaction()">সেভ করুন</button><button onclick="closeModal()">বাতিল</button></div>`);
+ updateCategories(x.category);
+}
+function updateCategories(selected=''){const type=$('f_type').value; $('f_category').innerHTML=categories[type].map(c=>`<option ${c===selected?'selected':''}>${esc(c)}</option>`).join('')}
+function saveTransaction(){
+ const type=$('f_type').value,amount=Math.round(Number($('f_amount').value)*100)/100,date=$('f_date').value;
+ if(!(amount>0)||!Number.isFinite(amount)){toast('০-এর বেশি সঠিক পরিমাণ লিখো।');return}
+ if(!date){toast('তারিখ নির্বাচন করো।');return}
+ const tx={id:editing||('tx_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),type,amount,date,category:$('f_category').value,person:$('f_person').value.trim(),note:$('f_note').value.trim(),updatedAt:new Date().toISOString()};
+ if(editing)state.transactions=state.transactions.map(x=>x.id===editing?tx:x);else state.transactions.push(tx);
+ save();closeModal();render();toast('হিসাব সেভ হয়েছে');
+}
+function deleteTransaction(id){if(!confirm('এই হিসাবটি মুছে ফেলবে?'))return;state.transactions=state.transactions.filter(x=>x.id!==id);save();render();toast('হিসাব মুছে ফেলা হয়েছে')}
+function transactionRow(x){return `<div class="item"><div class="grow"><span class="pill">${txTypeLabel(x.type)}</span><b>${esc(x.category)}</b><small>${esc(x.date)}${x.person?' · '+esc(x.person):''}${x.note?' · '+esc(x.note):''}</small></div><div class="amount ${x.type==='income'?'green':'red'}">${x.type==='income'?'+':'−'}${money(x.amount)}</div><button title="এডিট" onclick="transactionForm('${x.id}')">✎</button><button title="মুছুন" onclick="deleteTransaction('${x.id}')">🗑</button></div>`}
+function dashboard(){
+ const inc=total('income'),exp=total('expense'),month=state.transactions.filter(currentMonth);
+ const mi=total('income',month),me=total('expense',month),todayTx=state.transactions.filter(x=>x.date===today());
+ return `<div class="stats">
+ <div class="card stat"><small>মোট ব্যবসার আয়</small><strong class="green">${money(inc)}</strong></div>
+ <div class="card stat"><small>মোট ব্যবসার খরচ</small><strong class="red">${money(exp)}</strong></div>
+ <div class="card stat"><small>নিট হিসাব (আয় − খরচ)</small><strong class="${inc-exp>=0?'green':'red'}">${money(inc-exp)}</strong></div>
+ <div class="card stat"><small>এই মাসের আয়</small><strong class="green">${money(mi)}</strong></div>
+ <div class="card stat"><small>এই মাসের খরচ</small><strong class="red">${money(me)}</strong></div>
+ <div class="card stat"><small>আজকের লেনদেন</small><strong>${todayTx.length}</strong></div>
+ </div>
+ <div class="card"><h2>দ্রুত হিসাব যোগ করুন</h2><div class="actions"><button class="primary" onclick="transactionForm()">＋ নতুন হিসাব</button><button onclick="transactionFormType('income')">＋ ব্যবসার আয়</button><button onclick="transactionFormType('expense')">＋ ব্যবসার খরচ</button></div></div>
+ <div class="card"><h2>সাম্প্রতিক হিসাব</h2>${state.transactions.slice().sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)).slice(0,7).map(transactionRow).join('')||'<div class="empty">এখনো কোনো হিসাব নেই। “নতুন হিসাব” চাপ দিয়ে প্রথম হিসাবটি যোগ করো।</div>'}</div>`;
+}
+function transactionFormType(type){transactionForm();$('f_type').value=type;updateCategories()}
+function historyView(){
+ return `<div class="card"><div class="actions" style="justify-content:space-between"><h2>সব ব্যবসার হিসাব</h2><button class="primary" onclick="transactionForm()">＋ নতুন হিসাব</button></div>
+ <div class="filters"><input id="search" placeholder="ক্যাটাগরি/নাম/নোট খুঁজুন" oninput="filterRows()"><select id="filterType" onchange="filterRows()"><option value="">সব ধরন</option><option value="income">ব্যবসার আয়</option><option value="expense">ব্যবসার খরচ</option></select><input id="filterFrom" type="date" aria-label="শুরুর তারিখ" onchange="filterRows()"><input id="filterTo" type="date" aria-label="শেষের তারিখ" onchange="filterRows()"></div><div id="historyRows"></div></div>`;
+}
+function filterRows(){
+ const q=($('search')?.value||'').toLowerCase(),ty=$('filterType')?.value||'',from=$('filterFrom')?.value||'',to=$('filterTo')?.value||'';
+ const a=state.transactions.filter(x=>(!ty||x.type===ty)&&(!from||x.date>=from)&&(!to||x.date<=to)&&(`${x.category} ${x.person} ${x.note} ${x.amount}`.toLowerCase().includes(q))).sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id));
+ $('historyRows').innerHTML=a.map(transactionRow).join('')||'<div class="empty">এই ফিল্টারে কোনো হিসাব পাওয়া যায়নি।</div>';
+}
+function reports(){
+ const inc=total('income'),exp=total('expense'),by={};state.transactions.filter(x=>x.type==='expense').forEach(x=>by[x.category]=(by[x.category]||0)+x.amount);const max=Math.max(1,...Object.values(by));
+ return `<div class="stats"><div class="card stat"><small>মোট আয়</small><strong class="green">${money(inc)}</strong></div><div class="card stat"><small>মোট খরচ</small><strong class="red">${money(exp)}</strong></div><div class="card stat"><small>নিট</small><strong>${money(inc-exp)}</strong></div></div><div class="card"><h2>ক্যাটাগরি অনুযায়ী ব্যবসার খরচ</h2>${Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin:12px 0"><div class="actions" style="justify-content:space-between"><span>${esc(k)}</span><b>${money(v)}</b></div><div class="bar"><span style="width:${v/max*100}%"></span></div></div>`).join('')||'<div class="empty">রিপোর্ট দেখানোর মতো কোনো খরচ নেই।</div>'}</div><div class="card"><h2>মাসভিত্তিক সারাংশ</h2>${monthReport()}</div>`;
+}
+function monthReport(){
+ const months=[...new Set(state.transactions.map(x=>x.date.slice(0,7)))].sort().reverse();
+ return months.map(m=>{const a=state.transactions.filter(x=>x.date.startsWith(m));return `<div class="item"><div class="grow"><b>${m}</b><small>আয়: <span class="green">${money(total('income',a))}</span> · খরচ: <span class="red">${money(total('expense',a))}</span></small></div><b>${money(total('income',a)-total('expense',a))}</b></div>`}).join('')||'<div class="empty">এখনো কোনো হিসাব নেই।</div>';
+}
+function exportCSV(){
+ const rows=[['Date','Type','Category','Customer/Supplier','Amount','Note'],...state.transactions.map(x=>[x.date,x.type,x.category,x.person,x.amount,x.note])];
+ const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+ const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='business-hisab.csv';a.click();URL.revokeObjectURL(url);
+}
+function settings(){
+ return `<div class="card"><h2>ব্যবসার সেটিংস</h2><label>ব্যবসার নাম<input id="businessName" value="${esc(state.businessName||'আমার ব্যবসা')}"></label><div class="actions"><button class="primary" onclick="saveBusinessName()">নাম সেভ করুন</button><button onclick="backup()">ব্যাকআপ ডাউনলোড</button><button onclick="document.getElementById('restoreFile').click()">ব্যাকআপ রিস্টোর</button><input id="restoreFile" type="file" accept=".json,application/json" hidden onchange="restoreBackup(event)"><button onclick="exportCSV()">CSV এক্সপোর্ট</button><button onclick="window.print()">প্রিন্ট / PDF</button></div></div>
+ <div class="card"><h2>ডেটা মুছে ফেলা</h2><p class="muted">এটি এই নতুন Business Hisab Khata-এর সেভ করা সব হিসাব মুছে দেবে। এই কাজ ফিরিয়ে নেওয়া যাবে না।</p><button onclick="clearAll()" style="border-color:var(--red);color:var(--red)">সব ব্যবসার হিসাব মুছে ফেলুন</button></div>
+ <div class="card"><h2>ডেটা সংরক্ষণ সম্পর্কে</h2><p class="muted">হিসাব এই ব্রাউজারের Local Storage-এ সেভ হয়। একই ডিভাইস ও একই ব্রাউজারে খুললে থাকবে। ব্রাউজারের ডেটা মুছে ফেললে হিসাব হারাতে পারে—তাই মাঝে মাঝে ব্যাকআপ ডাউনলোড করে রাখো।</p></div>`;
+}
+function saveBusinessName(){state.businessName=$('businessName').value.trim()||'আমার ব্যবসা';save();render();toast('ব্যবসার নাম সেভ হয়েছে')}
+function backup(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='business-hisab-backup.json';a.click();URL.revokeObjectURL(url)}
+function restoreBackup(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const d=JSON.parse(reader.result);if(!Array.isArray(d.transactions))throw Error();if(!confirm('বর্তমান হিসাবের বদলে ব্যাকআপের হিসাব রিস্টোর করবে?'))return;state={transactions:d.transactions,businessName:d.businessName||'আমার ব্যবসা'};save();render();toast('ব্যাকআপ রিস্টোর হয়েছে')}catch(err){toast('ব্যাকআপ ফাইলটি সঠিক নয়')}};reader.readAsText(file)}
+function clearAll(){if(!confirm('সত্যিই কি এই নতুন হিসাবের সব ডেটা মুছে ফেলবে?'))return;state={transactions:[],businessName:state.businessName||'আমার ব্যবসা'};save();render();toast('সব হিসাব মুছে ফেলা হয়েছে')}
+function render(){
+ const pages={dashboard,history:historyView,reports,settings};
+ $('app').innerHTML=`<div class="top"><div><div class="brand">💼 ${esc(state.businessName||'আমার ব্যবসা')}</div><small>Business Hisab Khata · ব্যবসার আয়-খরচের হিসাব</small></div><button class="primary no-print" onclick="transactionForm()">＋ নতুন হিসাব</button></div>
+ <div class="tabs no-print"><button class="${view==='dashboard'?'active':''}" onclick="nav('dashboard')">ড্যাশবোর্ড</button><button class="${view==='history'?'active':''}" onclick="nav('history')">সব হিসাব</button><button class="${view==='reports'?'active':''}" onclick="nav('reports')">রিপোর্ট</button><button class="${view==='settings'?'active':''}" onclick="nav('settings')">সেটিংস / ব্যাকআপ</button></div>
+ ${pages[view]()}`;
+ if(view==='history')filterRows();
+}
+try{
+ // New storage key deliberately ignores the old personal/demo ledger stored under "hk".
+ const raw=localStorage.getItem(STORE);if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed.transactions))state={transactions:parsed.transactions,businessName:parsed.businessName||'আমার ব্যবসা'}}
+}catch(e){state={transactions:[],businessName:'আমার ব্যবসা'}}
+render();
+</script></body></html>
